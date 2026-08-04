@@ -28,7 +28,13 @@ def main(argv: list[str] | None = None) -> int:
                    choices=["heuristic", "ollama"],
                    help="heuristic (no LLM, runs anywhere) or ollama (local LLM)")
 
+    c = sub.add_parser("compare", help="run BOTH backends and report agreement")
+    c.add_argument("--model", default="qwen2.5:3b")
+
     args = ap.parse_args(argv)
+
+    if args.cmd == "compare":
+        return _compare(args.model)
 
     if args.cmd == "fetch":
         cases = fetch_failed(args.repo, args.limit)
@@ -44,6 +50,31 @@ def main(argv: list[str] | None = None) -> int:
     print(f"wrote {OUT/'flake_report.md'} ({len(rows)} cases, backend={args.backend})")
     for c, v in rows:
         print(f"  {c.job_name[:34]:36} -> {v.category:18} flake={v.is_flake} conf={v.confidence:.2f}")
+    return 0
+
+
+def _compare(model: str) -> int:
+    """Categorize every cached case with both backends; report agreement."""
+    from .categorize import categorize_heuristic, categorize_llm
+
+    cases = load_cases()
+    lines = ["# Baseline (heuristic) vs LLM", "",
+             "| Job | Heuristic | LLM | Agree? |", "|---|---|---|---|"]
+    agree = 0
+    for c in cases:
+        h = categorize_heuristic(c.excerpt)
+        m = categorize_llm(c.excerpt, "ollama", model)
+        ok = h.category == m.category
+        agree += ok
+        lines.append(f"| {c.job_name[:28]} | `{h.category}` | `{m.category}` "
+                     f"| {'✅' if ok else '⚠️'} |")
+        print(f"  {c.job_name[:30]:32} heuristic={h.category:16} llm={m.category:16} "
+              f"{'agree' if ok else 'DIFFER'}")
+    rate = agree / len(cases) if cases else 0
+    lines.insert(1, f"\nModel: `{model}` · agreement with baseline: "
+                    f"**{agree}/{len(cases)} ({rate:.0%})**\n")
+    (OUT / "comparison.md").write_text("\n".join(lines), encoding="utf-8")
+    print(f"\nagreement {agree}/{len(cases)} ({rate:.0%}) -> {OUT/'comparison.md'}")
     return 0
 
 

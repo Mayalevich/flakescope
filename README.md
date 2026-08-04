@@ -43,10 +43,16 @@ Outputs land in `samples/`: `flake_report.md` and `sample_pr_comment.md`.
   runs anywhere with no LLM and doubles as the yardstick to measure an LLM
   against; the **LLM backend** is a one-line swap. Comparing model vs baseline is
   an evaluation habit carried over from my retrieval work.
-  > **Status:** the heuristic backend is tested and run on real data below. The
-  > LLM backend (`--backend ollama`) is implemented against the Ollama JSON API
-  > but has **not yet been run on a live model** — it is the obvious next step,
-  > not a validated result.
+  > **Run for real (`qwen2.5:3b` via Ollama).** `python -m flakescope compare`
+  > categorizes all 11 cases with both backends: **agreement 4/11 (36%)**. The
+  > telling part is *how* they differ — the 3B model **never abstains**. On the
+  > cases the baseline honestly returns `unknown`, the model confabulates a
+  > category (it labeled an artifact-upload failure and a `curl` timeout as
+  > `lint_format`) and reports confidence 1.0. That empirically reproduces the
+  > hallucination problem my RISC-V extraction work targets, and is precisely the
+  > small-model reliability question this project must answer — evidence
+  > grounding and forced abstention matter more than raw model size. See
+  > `samples/comparison.md`.
 - **Hallucination control (from my RISC-V parameter-extraction work).** The LLM
   prompt is **closed-world** (decide only from the excerpt), **evidence-grounded**
   (every verdict quotes a verbatim log line), **taxonomy-constrained**, and
