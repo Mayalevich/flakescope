@@ -23,7 +23,7 @@ from dataclasses import dataclass
 TAXONOMY: dict[str, tuple[str, bool, str]] = {
     "network_timeout": (
         r"connection refused|i/o timeout|TLS handshake|dial tcp|"
-        r"could not resolve|network is unreachable|EOF\b|no route to host",
+        r"could not resolve|network is unreachable|unexpected EOF|no route to host",
         True, "Transient network/connectivity failure.",
     ),
     "timeout": (
@@ -42,8 +42,9 @@ TAXONOMY: dict[str, tuple[str, bool, str]] = {
     ),
     "flaky_dependency": (
         r"could not download|failed to pull|manifest unknown|"
-        r"registry.*unavailable|apt-get.*failed|dnf.*failed|rate limit",
-        True, "External dependency/registry was unavailable.",
+        r"registry.*unavailable|apt-get.*failed|dnf.*failed|rate limit|"
+        r"Failed to fetch http|Unable to fetch|Could not connect to.*archive",
+        True, "External dependency/registry/mirror was unavailable.",
     ),
     "infra_permission": (
         r"Permission denied|Operation not permitted|cannot remove|"
@@ -55,14 +56,23 @@ TAXONOMY: dict[str, tuple[str, bool, str]] = {
         r"lint.*Error 1",
         False, "Code style/lint failure — a real change is needed, not a retry.",
     ),
+    # Only genuine assertion / crash signals. A bare ginkgo "[FAILED]" is NOT
+    # here: ginkgo prefixes timeouts and network errors with it too, so it is an
+    # ambiguous marker, not proof of a real logic bug.
     "real_test_bug": (
-        r"Expected\b.*to (equal|be)|assertion|panic:|--- FAIL|"
-        r"\[FAILED\]|should not fail|Summarizing \d+ Failure",
+        r"Expected\b.*to (equal|be|match|contain)|assertion failed|panic:|"
+        r"--- FAIL|\bFAIL:\s|runtime error:|"
+        r"\[FAIL\]|FAIL! -- \d+ Passed \| [1-9]",  # ginkgo spec / suite summary
         False, "A genuine test assertion/logic failure.",
     ),
 }
 
 CATEGORIES = list(TAXONOMY)
+
+# Near-certain environment failures. Only these override a genuine assertion:
+# a bare "timed out" or "permission denied" is too ambiguous to hide a real bug.
+STRONG_INFRA = {"network_timeout", "resource_exhaustion", "race_condition", "flaky_dependency"}
+REAL_SIGNALS = {"real_test_bug", "lint_format"}
 
 
 @dataclass
@@ -88,25 +98,35 @@ def _first_match(excerpt: str, pattern: str) -> str | None:
 
 
 def categorize_heuristic(excerpt: str) -> Verdict:
-    """Deterministic baseline: first taxonomy pattern that matches wins.
+    """Deterministic baseline categorizer.
 
-    Order matters — infra/network signals are checked before real_test_bug so a
-    cleanup 'Permission denied' doesn't get read as a genuine failure unless a
-    real assertion is the only thing present.
+    Policy (conservative — never hide a real bug behind a weak flake signal):
+      * If a genuine failure (assertion / lint) is present, report THAT — unless
+        a STRONG environment signal (connection refused, OOM, data race, registry
+        down) co-occurs, in which case the environment most likely broke the test.
+      * Otherwise take the first matching signal.
     """
-    hits: list[tuple[str, str]] = []
+    hits: dict[str, str] = {}
     for cat, (pat, _flake, _m) in TAXONOMY.items():
         ev = _first_match(excerpt, pat)
         if ev:
-            hits.append((cat, ev))
+            hits[cat] = ev
     if not hits:
         return Verdict("unknown", False, 0.0, "", "Manual review required.", "heuristic")
-    # Prefer a real_test_bug only if it's the sole signal; else the infra/flake one.
-    non_bug = [h for h in hits if h[0] != "real_test_bug"]
-    cat, ev = (non_bug[0] if non_bug else hits[0])
+
+    real = next((c for c in hits if c in REAL_SIGNALS), None)
+    strong = next((c for c in hits if c in STRONG_INFRA), None)
+    if real and not strong:
+        cat = real                       # a real assertion, no strong infra -> real bug
+        conf = 0.85
+    elif strong:
+        cat = strong                     # strong environment signal wins
+        conf = 0.5 if real else 0.8      # ambiguous if a real assertion also present
+    else:
+        cat = next(iter(hits))           # only weak signals (bare timeout / permission)
+        conf = 0.6
     is_flake, meaning = TAXONOMY[cat][1], TAXONOMY[cat][2]
-    conf = 0.6 if len(hits) > 1 else 0.8
-    return Verdict(cat, is_flake, conf, ev, meaning, "heuristic")
+    return Verdict(cat, is_flake, conf, hits[cat], meaning, "heuristic")
 
 
 _PROMPT = """You classify a CI failure log excerpt into exactly one category.

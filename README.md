@@ -31,11 +31,22 @@ Outputs land in `samples/`: `flake_report.md` and `sample_pr_comment.md`.
   Failures`) and **drop post-job cleanup noise** whose benign `Permission denied`
   lines otherwise poison the verdict. This keeps model context small — a core
   concern of the project.
+- **Flake = re-run history, not a single failure.** A failure is a *confirmed*
+  flake only when the same workflow passed on the same commit SHA in another run
+  (`rerun_passed`); the category is only a *prior*. This is the correct domain
+  model and what a Podman maintainer actually reasons about.
+- **Conservative categorizer (never hide a real bug).** A genuine assertion is
+  reported as a real failure unless a *strong* environment signal (connection
+  refused, OOM, data race, mirror down) co-occurs — a bare `timed out` or
+  `permission denied` is too ambiguous to auto-retry a real bug on.
 - **Two backends behind one interface.** A deterministic **heuristic baseline**
   runs anywhere with no LLM and doubles as the yardstick to measure an LLM
-  against; the **LLM backend** (Ollama today, API keys pluggable) is a one-line
-  swap. Comparing model vs baseline is an evaluation habit carried over from my
-  retrieval work.
+  against; the **LLM backend** is a one-line swap. Comparing model vs baseline is
+  an evaluation habit carried over from my retrieval work.
+  > **Status:** the heuristic backend is tested and run on real data below. The
+  > LLM backend (`--backend ollama`) is implemented against the Ollama JSON API
+  > but has **not yet been run on a live model** — it is the obvious next step,
+  > not a validated result.
 - **Hallucination control (from my RISC-V parameter-extraction work).** The LLM
   prompt is **closed-world** (decide only from the excerpt), **evidence-grounded**
   (every verdict quotes a verbatim log line), **taxonomy-constrained**, and
@@ -51,11 +62,29 @@ fault); `lint_format`, `real_test_bug` → **real** (needs a code change);
 re-run (`run_attempt > 1`) still failing is an extra flake hint.
 
 ## Real run (this repo's `samples/`)
-On 6 recent `containers/podman` failures the baseline correctly separates a
-`gofumpt` **lint failure** (real) and a ginkgo assertion (real) from macOS
-machine **timeouts** (flake) — and honestly returns `unknown` on two cases where
-a regex baseline has no signal. **Those `unknown` cases are exactly where the LLM
-backend earns its keep** — the motivation for the mentorship's agentic engine.
+On 11 failed jobs from 6 recent `containers/podman` runs the baseline separates:
+a `gofumpt` **lint failure** and specific ginkgo test failures (`--- FAIL:
+TestMachine`, `[FAIL] Podman run networking … two static IPs`) → **likely real**;
+an apt **mirror fetch failure** and a **network timeout** → **flake**; and it
+honestly returns `unknown` on 3 cases. The extractor is verified to surface the
+real failure line even from a **161k-line** job log (the failure sits in the
+middle, not the tail).
+
+**The `unknown` cases are the honest part.** Two are Podman **BATS** system tests
+whose format (`expected exit code 0, got 28`) the Go/ginkgo-oriented regex
+baseline doesn't cover; one logs its failure only to an uploaded **journal
+artifact**, not stdout. These are exactly where the LLM backend (arbitrary log
+formats) and artifact fetching earn their keep — the motivation for the
+mentorship's agentic engine. I deliberately did **not** keep bolting on regexes
+until all 11 matched: that would overfit the taxonomy to 11 samples.
+
+## Limitations (known, on purpose)
+- Category → flake is a *prior*; only `rerun_passed` is ground truth.
+- Regex baseline covers common Go/ginkgo/lint/network/dependency formats; BATS
+  `expected exit code` failures and journal-artifact-only failures return
+  `unknown` → `needs review`.
+- The LLM backend is implemented but not yet run on a live model (see above).
+- One representative excerpt per failed job; artifact logs are not fetched yet.
 
 ## What a full project adds (mentorship scope)
 - An **agentic log-navigation loop** (tool calls: list failed steps → fetch only
