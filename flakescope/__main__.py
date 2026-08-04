@@ -28,13 +28,14 @@ def main(argv: list[str] | None = None) -> int:
                    choices=["heuristic", "ollama"],
                    help="heuristic (no LLM, runs anywhere) or ollama (local LLM)")
 
-    c = sub.add_parser("compare", help="run BOTH backends and report agreement")
-    c.add_argument("--model", default="qwen2.5:3b")
+    c = sub.add_parser("compare", help="score baseline + LLM(s) vs ground truth")
+    c.add_argument("--models", default="qwen2.5:3b",
+                   help="comma-separated Ollama models")
 
     args = ap.parse_args(argv)
 
     if args.cmd == "compare":
-        return _compare(args.model)
+        return _compare([m.strip() for m in args.models.split(",") if m.strip()])
 
     if args.cmd == "fetch":
         cases = fetch_failed(args.repo, args.limit)
@@ -53,28 +54,62 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _compare(model: str) -> int:
-    """Categorize every cached case with both backends; report agreement."""
+def _accuracy(verdicts: dict[int, tuple[str, bool]], labels: dict) -> tuple[float, float, int]:
+    """(category accuracy, is_flake accuracy, n) over the labeled cases."""
+    cat_ok = flake_ok = n = 0
+    for jid, lab in labels.items():
+        if not jid.isdigit() or int(jid) not in verdicts:
+            continue
+        n += 1
+        cat, is_flake = verdicts[int(jid)]
+        cat_ok += cat == lab["category"]
+        flake_ok += is_flake == lab["is_flake"]
+    return (cat_ok / n if n else 0.0), (flake_ok / n if n else 0.0), n
+
+
+def _compare(models: list[str]) -> int:
+    """Score the heuristic baseline and each LLM against the ground-truth labels."""
+    import json
+
     from .categorize import categorize_heuristic, categorize_llm
 
     cases = load_cases()
-    lines = ["# Baseline (heuristic) vs LLM", "",
-             "| Job | Heuristic | LLM | Agree? |", "|---|---|---|---|"]
-    agree = 0
+    labels = json.loads((OUT / "labels.json").read_text(encoding="utf-8"))
+
+    backends: dict[str, dict[int, tuple[str, bool]]] = {
+        "heuristic": {c.job_id: (v.category, v.is_flake)
+                      for c in cases for v in [categorize_heuristic(c.excerpt)]}
+    }
+    for i, model in enumerate(models):
+        backends[f"{model}"] = {
+            c.job_id: (v.category, v.is_flake)
+            for c in cases for v in [categorize_llm(c.excerpt, "ollama", model, guard=True)]
+        }
+        if i == 0:  # also measure the first model WITHOUT the grounding guard
+            backends[f"{model} (raw)"] = {
+                c.job_id: (v.category, v.is_flake)
+                for c in cases for v in [categorize_llm(c.excerpt, "ollama", model, guard=False)]
+            }
+
+    lines = ["# Baseline vs LLM — accuracy on hand-labeled ground truth", "",
+             "| Backend | is_flake acc | category acc | (n labeled) |",
+             "|---|---|---|---|"]
+    print("Accuracy on labeled ground truth:")
+    for name, verdicts in backends.items():
+        cat_acc, flake_acc, n = _accuracy(verdicts, labels)
+        lines.append(f"| `{name}` | {flake_acc:.0%} | {cat_acc:.0%} | {n} |")
+        print(f"  {name:16} is_flake={flake_acc:.0%}  category={cat_acc:.0%}  (n={n})")
+
+    # Full per-case table for transparency.
+    lines += ["", "## Per-case", "",
+              "| Job | " + " | ".join(backends) + " | truth |",
+              "|---|" + "---|" * (len(backends) + 1)]
     for c in cases:
-        h = categorize_heuristic(c.excerpt)
-        m = categorize_llm(c.excerpt, "ollama", model)
-        ok = h.category == m.category
-        agree += ok
-        lines.append(f"| {c.job_name[:28]} | `{h.category}` | `{m.category}` "
-                     f"| {'✅' if ok else '⚠️'} |")
-        print(f"  {c.job_name[:30]:32} heuristic={h.category:16} llm={m.category:16} "
-              f"{'agree' if ok else 'DIFFER'}")
-    rate = agree / len(cases) if cases else 0
-    lines.insert(1, f"\nModel: `{model}` · agreement with baseline: "
-                    f"**{agree}/{len(cases)} ({rate:.0%})**\n")
+        truth = labels.get(str(c.job_id), {}).get("category", "—")
+        cells = " | ".join(f"`{backends[b][c.job_id][0]}`" for b in backends)
+        lines.append(f"| {c.job_name[:26]} | {cells} | {truth} |")
     (OUT / "comparison.md").write_text("\n".join(lines), encoding="utf-8")
-    print(f"\nagreement {agree}/{len(cases)} ({rate:.0%}) -> {OUT/'comparison.md'}")
+    print(f"\n-> {OUT/'comparison.md'}")
     return 0
 
 

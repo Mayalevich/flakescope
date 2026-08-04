@@ -130,19 +130,33 @@ def categorize_heuristic(excerpt: str) -> Verdict:
 
 
 _PROMPT = """You classify a CI failure log excerpt into exactly one category.
-Use ONLY the excerpt. Do not invent details not present in it.
+Decide ONLY from the excerpt. Do not use outside knowledge or invent details.
 
-Categories: {cats}
+Categories: {cats}, or "unknown".
+
+Rules:
+- If the excerpt shows no clear failure signal, answer "unknown". Do NOT guess.
+- "evidence" MUST be a single line copied VERBATIM from the excerpt.
 
 Return strict JSON:
-{{"category": <one of the categories>,
+{{"category": <a category or "unknown">,
   "confidence": <0..1>,
-  "evidence": "<a verbatim line copied from the excerpt>",
+  "evidence": "<a verbatim line from the excerpt>",
   "mitigation": "<one concrete next step>"}}
 
 EXCERPT:
 {excerpt}
 """
+
+
+def _grounded(evidence: str, excerpt: str) -> bool:
+    """True if the model's evidence line really appears in the excerpt.
+
+    Ports the evidence-grounding guard from my RISC-V extraction work: a verdict
+    whose 'evidence' was invented (not in the source) is not trustworthy.
+    """
+    e = " ".join(evidence.split())[:40]
+    return len(e) >= 8 and e in " ".join(excerpt.split())
 
 
 def _ollama(excerpt: str, model: str) -> dict:
@@ -158,17 +172,25 @@ def _ollama(excerpt: str, model: str) -> dict:
 
 
 def categorize_llm(excerpt: str, backend: str = "ollama",
-                   model: str = "qwen2.5:3b") -> Verdict:
-    """Agentic/LLM categorizer. Falls back to heuristic if no backend is reachable."""
+                   model: str = "qwen2.5:3b", guard: bool = True) -> Verdict:
+    """Agentic/LLM categorizer. Falls back to heuristic if no backend is reachable.
+
+    With ``guard`` (default), a verdict whose evidence is not verbatim in the
+    excerpt is refused to `unknown` — the confabulation guard from my RISC-V
+    work. ``guard=False`` measures the raw model for comparison.
+    """
     try:
         if backend == "ollama":
             data = _ollama(excerpt, model)
         else:
             raise RuntimeError(f"backend {backend} not configured")
         cat = data["category"] if data.get("category") in TAXONOMY else "unknown"
+        ev = str(data.get("evidence", ""))[:200]
+        conf = float(data.get("confidence", 0.5))
+        if guard and cat != "unknown" and not _grounded(ev, excerpt):
+            cat, conf, ev = "unknown", 0.0, "(evidence not found in excerpt — refused)"
         is_flake = TAXONOMY.get(cat, ("", False, ""))[1]
-        return Verdict(cat, is_flake, float(data.get("confidence", 0.5)),
-                       str(data.get("evidence", ""))[:200],
+        return Verdict(cat, is_flake, conf, ev,
                        str(data.get("mitigation", "")), f"llm:{backend}:{model}")
     except Exception as e:  # noqa: BLE001 - PoC: any backend failure -> baseline
         v = categorize_heuristic(excerpt)

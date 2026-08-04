@@ -43,16 +43,30 @@ Outputs land in `samples/`: `flake_report.md` and `sample_pr_comment.md`.
   runs anywhere with no LLM and doubles as the yardstick to measure an LLM
   against; the **LLM backend** is a one-line swap. Comparing model vs baseline is
   an evaluation habit carried over from my retrieval work.
-  > **Run for real (`qwen2.5:3b` via Ollama).** `python -m flakescope compare`
-  > categorizes all 11 cases with both backends: **agreement 4/11 (36%)**. The
-  > telling part is *how* they differ — the 3B model **never abstains**. On the
-  > cases the baseline honestly returns `unknown`, the model confabulates a
-  > category (it labeled an artifact-upload failure and a `curl` timeout as
-  > `lint_format`) and reports confidence 1.0. That empirically reproduces the
-  > hallucination problem my RISC-V extraction work targets, and is precisely the
-  > small-model reliability question this project must answer — evidence
-  > grounding and forced abstention matter more than raw model size. See
-  > `samples/comparison.md`.
+## Evaluation (run for real, `ollama` + a 6-case hand-labeled ground truth)
+`python -m flakescope compare --models qwen2.5:3b,qwen2.5:7b` scores each backend
+against `samples/labels.json` (accuracy on the actionable **is_flake** decision
+and on exact **category**):
+
+| Backend | is_flake acc | category acc |
+|---|---|---|
+| **heuristic baseline** | **83%** | **67%** |
+| qwen2.5:3b (guarded) | 50% | 0% |
+| qwen2.5:3b (raw, no guard) | 50% | 0% |
+| qwen2.5:7b (guarded) | 50% | 0% |
+
+**Honest finding — the deterministic baseline beats the local LLMs.** The small
+models abstain (`unknown`) on almost every labeled case; a naive prompt instead
+made the 3B model *confabulate* categories at confidence 1.0 (an artifact-upload
+failure → `lint_format`), which is why the evidence-grounding guard from my
+RISC-V work is in place. Raw ≈ guarded here, so the guard isn't what limits the
+LLM — the model simply can't read these logs reliably, and **7B doesn't fix it**.
+
+The takeaway is the project's own thesis: for local-model CI-log categorization,
+a well-designed deterministic baseline plus the re-run signal is the reliable
+default; making an LLM genuinely useful needs the **agentic tool-navigation**
+design (fetch only the relevant log/section) or a frontier model — not just a
+bigger local model. That is exactly what the mentorship builds.
 - **Hallucination control (from my RISC-V parameter-extraction work).** The LLM
   prompt is **closed-world** (decide only from the excerpt), **evidence-grounded**
   (every verdict quotes a verbatim log line), **taxonomy-constrained**, and
