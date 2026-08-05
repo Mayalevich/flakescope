@@ -198,6 +198,13 @@ until all 11 matched: that would overfit the taxonomy to 11 samples.
 - Failures that live only in an uploaded journal artifact aren't fetched yet.
 - The agent eval is reproducible from a clone: the 8 labeled cases' raw logs are
   committed gzipped (`samples/raw_*.log.gz`); `load_raw` reads them transparently.
+- **Heuristic false-positive on benign keywords.** The regex matches a
+  failure-signal string even in a *passing* context (a test literally named
+  `... connection refused ...`, an expected-error message), so it can mislabel.
+  Bounded in practice — only GitHub-failed jobs are categorized and extraction
+  centers on the real failure anchor — but a mixed log can still fool the regex.
+  The LLM/agent reads context and is more robust here (found via an adversarial
+  no-failure-log test); one more reason the hybrid beats regex alone.
 
 ## What a full project adds (mentorship scope)
 Already prototyped here: the agentic tool-navigation loop, the measured hybrid

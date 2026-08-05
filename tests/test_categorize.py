@@ -45,6 +45,15 @@ def test_strong_infra_overrides_assertion():
     assert v.category == "network_timeout" and v.is_flake and v.confidence <= 0.5
 
 
+def test_no_failure_signal_returns_unknown():
+    # A passing log must not be flagged (bounded: only failed jobs are fed, but
+    # this guards the regression).
+    assert categorize_heuristic(
+        "SUCCESS! -- 500 Passed | 0 Failed | 3 Skipped").category == "unknown"
+    assert categorize_heuristic(
+        "all tests passed, 0 failures\nno errors found").category == "unknown"
+
+
 def test_extract_drops_cleanup_noise():
     log = (
         "2026-01-01T00:00:00Z • [FAILED] real failure here\n"
