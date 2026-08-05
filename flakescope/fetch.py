@@ -120,6 +120,8 @@ def fetch_failed(repo: str, limit: int = 5, max_jobs: int = 12) -> list[FailureC
                 raw = _gh_text(f"repos/{repo}/actions/jobs/{job['id']}/logs")
             except subprocess.CalledProcessError:
                 continue
+            CACHE.mkdir(parents=True, exist_ok=True)
+            (CACHE / f"raw_{job['id']}.log").write_text(raw, encoding="utf-8")
             cases.append(FailureCase(
                 run_id=run["id"], job_id=job["id"], workflow=run["name"],
                 job_name=job["name"], head_sha=run["head_sha"][:7],
@@ -143,3 +145,8 @@ def cache_cases(cases: list[FailureCase]) -> Path:
 def load_cases() -> list[FailureCase]:
     data = json.loads((CACHE / "failures.json").read_text(encoding="utf-8"))
     return [FailureCase(**d) for d in data]
+
+
+def load_raw(job_id: int) -> str:
+    """Raw job log cached during fetch (for the agent to navigate itself)."""
+    return (CACHE / f"raw_{job_id}.log").read_text(encoding="utf-8")

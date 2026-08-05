@@ -32,10 +32,15 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--models", default="qwen2.5:3b",
                    help="comma-separated Ollama models")
 
+    a = sub.add_parser("agent", help="run the agentic categorizer (tool-calling) on all cases")
+    a.add_argument("--model", default="qwen2.5:7b")
+
     args = ap.parse_args(argv)
 
     if args.cmd == "compare":
         return _compare([m.strip() for m in args.models.split(",") if m.strip()])
+    if args.cmd == "agent":
+        return _agent(args.model)
 
     if args.cmd == "fetch":
         cases = fetch_failed(args.repo, args.limit)
@@ -110,6 +115,52 @@ def _compare(models: list[str]) -> int:
         lines.append(f"| {c.job_name[:26]} | {cells} | {truth} |")
     (OUT / "comparison.md").write_text("\n".join(lines), encoding="utf-8")
     print(f"\n-> {OUT/'comparison.md'}")
+    return 0
+
+
+def _agent(model: str) -> int:
+    """Run the tool-calling agent on every cached case; record trajectories."""
+    import json
+
+    from .agent import run_agent
+    from .fetch import load_raw
+
+    cases = load_cases()
+    labels = json.loads((OUT / "labels.json").read_text(encoding="utf-8"))
+    lines = ["# Agentic categorizer (tool-calling) — trajectories", "",
+             f"Model: `{model}`. The agent starts with only the job name and must "
+             "call tools to find the failure.", "",
+             "| Job | Verdict | Steps | Trajectory | Evidence |", "|---|---|---|---|---|"]
+    cat_ok = flake_ok = n = 0
+    steps_total = submitted = 0
+    for c in cases:
+        try:
+            r = run_agent(load_raw(c.job_id), c.job_name, model)
+        except FileNotFoundError:
+            continue
+        submitted += r.submitted
+        steps_total += r.steps
+        traj = " → ".join(r.trajectory).replace("|", "\\|")[:70]
+        lines.append(f"| {c.job_name[:26]} | `{r.verdict.category}` "
+                     f"{'🟡' if r.verdict.is_flake else '🔴'} | {r.steps} | {traj} "
+                     f"| {r.verdict.evidence[:50].replace('|','')} |")
+        print(f"  {c.job_name[:28]:30} {r.verdict.category:16} steps={r.steps} "
+              f"traj={' → '.join(r.trajectory)[:60]}")
+        lab = labels.get(str(c.job_id))
+        if lab:
+            n += 1
+            cat_ok += r.verdict.category == lab["category"]
+            flake_ok += r.verdict.is_flake == lab["is_flake"]
+    avg = steps_total / len(cases) if cases else 0
+    summary = (f"\n**{submitted}/{len(cases)} submitted**, avg **{avg:.1f} tool "
+               f"calls/case**")
+    if n:
+        summary += (f". On {n} labeled cases: is_flake **{flake_ok/n:.0%}**, "
+                    f"category **{cat_ok/n:.0%}**.")
+    lines.insert(4, summary)
+    (OUT / "agent_report.md").write_text("\n".join(lines), encoding="utf-8")
+    print(summary.strip())
+    print(f"-> {OUT/'agent_report.md'}")
     return 0
 
 

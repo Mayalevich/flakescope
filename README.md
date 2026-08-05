@@ -21,9 +21,16 @@ python -m flakescope fetch --repo containers/podman --limit 6
 
 # 2. categorize + report (no LLM needed — deterministic baseline)
 python -m flakescope run --backend heuristic
-#    or, with a local model:  ollama pull qwen2.5:3b && python -m flakescope run --backend ollama
+
+# 3. the agentic categorizer — the model navigates the log via tool calls
+#    (needs a tool-capable local model: `ollama pull qwen2.5:7b`)
+python -m flakescope agent --model qwen2.5:7b
+
+# 4. score baseline vs single-shot LLMs against the ground truth
+python -m flakescope compare --models qwen2.5:3b,qwen2.5:7b
 ```
-Outputs land in `samples/`: `flake_report.md` and `sample_pr_comment.md`.
+Outputs land in `samples/`: `flake_report.md`, `agent_report.md` (trajectories),
+`comparison.md`, `sample_pr_comment.md`.
 
 ## Design choices
 - **Smart excerpt, not the whole log.** CI logs run to thousands of lines; we
@@ -39,40 +46,51 @@ Outputs land in `samples/`: `flake_report.md` and `sample_pr_comment.md`.
   reported as a real failure unless a *strong* environment signal (connection
   refused, OOM, data race, mirror down) co-occurs — a bare `timed out` or
   `permission denied` is too ambiguous to auto-retry a real bug on.
-- **Two backends behind one interface.** A deterministic **heuristic baseline**
-  runs anywhere with no LLM and doubles as the yardstick to measure an LLM
-  against; the **LLM backend** is a one-line swap. Comparing model vs baseline is
-  an evaluation habit carried over from my retrieval work.
-## Evaluation (run for real, `ollama` + a 6-case hand-labeled ground truth)
-`python -m flakescope compare --models qwen2.5:3b,qwen2.5:7b` scores each backend
-against `samples/labels.json` (accuracy on the actionable **is_flake** decision
-and on exact **category**):
+- **Three approaches, one taxonomy.** (1) a deterministic **heuristic baseline**
+  (no LLM, runs anywhere, and a yardstick to measure against); (2) a single-shot
+  **LLM** handed an excerpt; (3) an **agentic** categorizer that gets only the job
+  name and must call tools to find the failure itself. Comparing them is an
+  evaluation habit from my retrieval work.
+- **The agentic path is the point.** The agent (`flakescope/agent.py`, tools in
+  `tools.py`, skill in `skills/ci_triage.md`) uses Ollama tool-calling to
+  `search_log` / `list_steps` / `read_section` over a 100k+ line log, pulling only
+  what it needs, then `submit`s a grounded verdict — and we record the full
+  **trajectory** (tool sequence + step count), which is how such assistants should
+  be judged. This mirrors the Jaeger MCP-tools + Skills design.
+- **Hallucination control (from my RISC-V parameter-extraction work).** Closed-world
+  (decide only from what was read), **evidence-grounded** (every verdict quotes a
+  verbatim log line, verified to exist), taxonomy-constrained, temperature 0.
+- **Reproducible.** Excerpts/verdicts are cached and deterministic; the ground
+  truth lives in `samples/labels.json`.
+## Evaluation (run for real on `ollama`, vs a hand-labeled ground truth)
+Every approach is scored on the same 6 labeled cases (`samples/labels.json`) —
+accuracy on the actionable **is_flake** decision and on exact **category**:
 
-| Backend | is_flake acc | category acc |
-|---|---|---|
-| **heuristic baseline** | **83%** | **67%** |
-| qwen2.5:3b (guarded) | 50% | 0% |
-| qwen2.5:3b (raw, no guard) | 50% | 0% |
-| qwen2.5:7b (guarded) | 50% | 0% |
+| Approach | is_flake acc | category acc | notes |
+|---|---|---|---|
+| heuristic baseline | 83% | **67%** | precise on formats it knows; `unknown` otherwise |
+| single-shot LLM qwen2.5:3b | 50% | 0% | abstains / confabulates |
+| single-shot LLM qwen2.5:7b | 50% | 0% | bigger ≠ better |
+| **agentic LLM qwen2.5:7b** | **100%** | 33% | navigates the log itself (~2.8 tool calls) |
 
-**Honest finding — the deterministic baseline beats the local LLMs.** The small
-models abstain (`unknown`) on almost every labeled case; a naive prompt instead
-made the 3B model *confabulate* categories at confidence 1.0 (an artifact-upload
-failure → `lint_format`), which is why the evidence-grounding guard from my
-RISC-V work is in place. Raw ≈ guarded here, so the guard isn't what limits the
-LLM — the model simply can't read these logs reliably, and **7B doesn't fix it**.
+Two honest findings:
 
-The takeaway is the project's own thesis: for local-model CI-log categorization,
-a well-designed deterministic baseline plus the re-run signal is the reliable
-default; making an LLM genuinely useful needs the **agentic tool-navigation**
-design (fetch only the relevant log/section) or a frontier model — not just a
-bigger local model. That is exactly what the mentorship builds.
-- **Hallucination control (from my RISC-V parameter-extraction work).** The LLM
-  prompt is **closed-world** (decide only from the excerpt), **evidence-grounded**
-  (every verdict quotes a verbatim log line), **taxonomy-constrained**, and
-  returns a fixed JSON schema at temperature 0.
-- **Reproducible.** Excerpts are cached to `samples/failures.json` keyed by
-  run/job id, so a run is deterministic and re-runnable.
+1. **Single-shot LLMs are unreliable here** — handed an excerpt, the 3B/7B models
+   abstain or (with a naive prompt) confabulate a category at confidence 1.0. A
+   bigger local model doesn't fix it.
+2. **The agentic approach is the one that works.** Given only the job name, the
+   tool-calling agent finds the failure itself in ~2.8 calls and gets the
+   flake/real decision right on every labeled case — including one the regex
+   baseline **missed entirely** (`sys remote`: it navigated to
+   `chown: cannot access '/dev/kvm'`, which never appeared in the baseline's
+   excerpt). It's still weaker than the baseline on *exact category*, so the
+   right production design is a **hybrid**: the deterministic baseline for known
+   formats, the agent for everything it can't parse. See `samples/agent_report.md`
+   for the full trajectories and `samples/comparison.md` for the single-shot table.
+
+This is the project's own thesis, shown with data: naive LLM use fails; the value
+is in the **agentic tool-navigation + evidence grounding**, exactly what the
+mentorship builds.
 
 ## Taxonomy
 `network_timeout`, `timeout`, `resource_exhaustion`, `race_condition`,
@@ -103,13 +121,18 @@ until all 11 matched: that would overfit the taxonomy to 11 samples.
 - Regex baseline covers common Go/ginkgo/lint/network/dependency formats; BATS
   `expected exit code` failures and journal-artifact-only failures return
   `unknown` → `needs review`.
-- The LLM backend is implemented but not yet run on a live model (see above).
-- One representative excerpt per failed job; artifact logs are not fetched yet.
+- Ground truth is 6 hand-labeled cases — illustrative, not a benchmark.
+- The agent runs on a local model (qwen2.5); a frontier model or few-shot
+  prompting would likely lift its exact-category accuracy.
+- Failures that live only in an uploaded journal artifact aren't fetched yet.
 
 ## What a full project adds (mentorship scope)
-- An **agentic log-navigation loop** (tool calls: list failed steps → fetch only
-  the relevant section → search) instead of a fixed extractor.
-- **Flake confirmation** via re-run history (failed attempt → later success on
-  the same SHA).
+Already prototyped here: the agentic tool-navigation loop, re-run-based flake
+confirmation, the taxonomy, and the evaluation harness. A full project would add:
+- A **hybrid router** (deterministic baseline first, agent for the rest) and
+  few-shot/frontier models to raise exact-category accuracy.
+- **Artifact fetching** so journal-only failures become solvable.
+- A larger, versioned labeled benchmark and trajectory metrics (call-error rate,
+  steps-to-evidence) tracked over time.
 - Workflow integration: auto-filed GitHub issues, weekly flake reports, PR
   comments, and a prompt/taxonomy operators can tune.

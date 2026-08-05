@@ -1,9 +1,9 @@
 {
-  "_note": "Small hand-labeled ground truth for the 6 cases whose root cause is unambiguous from the log. Ambiguous machine-test / journal-artifact failures are intentionally left unlabeled. Keyed by job_id.",
+  "_note": "Hand-labeled ground truth for cases whose root cause is unambiguous from the log. Ambiguous machine-test failures left unlabeled. Keyed by job_id.",
   "92016971144": {"category": "real_test_bug", "is_flake": false, "why": "BATS assertion 'FAIL: exit code is 126; expected 0'"},
   "92051839476": {"category": "flaky_dependency", "is_flake": true, "why": "apt mirror: 'W: Failed to fetch http://archive.ubuntu.com'"},
   "92051840263": {"category": "flaky_dependency", "is_flake": true, "why": "apt mirror: 'E: Failed to fetch ... libcacard'"},
   "91863132405": {"category": "real_test_bug", "is_flake": false, "why": "ginkgo '[FAIL] Podman run networking ... two static IPs'"},
   "91799682323": {"category": "lint_format", "is_flake": false, "why": "gofumpt 'File is not properly formatted'"},
-  "91663920765": {"category": "timeout", "is_flake": true, "why": "curl '--max-time 3 ... failed ... got 28' (timeout)"}
+  "92175992913": {"category": "infra_permission", "is_flake": true, "why": "runner missing KVM: 'chown: cannot access /dev/kvm' (heuristic missed this; only found by navigating the log)"}
 }
