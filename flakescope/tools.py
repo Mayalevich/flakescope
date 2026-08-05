@@ -11,7 +11,7 @@ import re
 
 _TS = re.compile(r"^\S+Z\s")
 _GROUP = re.compile(r"##\[group\](.*)")
-_CLEANUP = re.compile(r"Post[- ]job cleanup|Cleaning up orphan processes", re.I)
+_CLEANUP = re.compile(r"Post[- ]job cleanup|Cleaning up orphan processes", re.IGNORECASE)
 
 
 def _strip(line: str) -> str:
@@ -43,7 +43,7 @@ class LogNavigator:
     def search_log(self, pattern: str, max_results: int = 15) -> str:
         """Return log lines (with line numbers) matching a regex."""
         try:
-            rx = re.compile(pattern, re.I)
+            rx = re.compile(pattern, re.IGNORECASE)
         except re.error as e:
             return f"bad regex: {e}"
         hits = [f"L{i}: {_strip(ln).strip()[:200]}"
@@ -68,7 +68,8 @@ TOOL_SCHEMAS = [
         "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {
         "name": "search_log",
-        "description": "Search the log for a regex (e.g. 'FAIL|panic|Error'). Returns matching lines with line numbers.",
+        "description": "Search the log for a regex (e.g. 'FAIL|panic|Error'). "
+                       "Returns matching lines with line numbers.",
         "parameters": {"type": "object", "properties": {
             "pattern": {"type": "string"}}, "required": ["pattern"]}}},
     {"type": "function", "function": {

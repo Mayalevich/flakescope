@@ -55,7 +55,8 @@ def main(argv: list[str] | None = None) -> int:
         pr_comment(*rows[0]) if rows else "no cases", encoding="utf-8")
     print(f"wrote {OUT/'flake_report.md'} ({len(rows)} cases, backend={args.backend})")
     for c, v in rows:
-        print(f"  {c.job_name[:34]:36} -> {v.category:18} flake={v.is_flake} conf={v.confidence:.2f}")
+        print(f"  {c.job_name[:34]:36} -> {v.category:18} "
+              f"flake={v.is_flake} conf={v.confidence:.2f}")
     return 0
 
 
@@ -128,9 +129,10 @@ def _agent(model: str) -> int:
 
     cases = load_cases()
     labels = json.loads((OUT / "labels.json").read_text(encoding="utf-8"))
+    intro = (f"Model: `{model}`. The agent gets only the job name and must call "
+             "tools to find the failure itself.")
     lines = ["# Agentic categorizer (tool-calling) — trajectories & metrics", "",
-             f"Model: `{model}`. The agent gets only the job name and must call "
-             "tools to find the failure itself.", "",
+             intro, "",
              "| Job | Verdict | Steps | Ctx% | Trajectory | Evidence |",
              "|---|---|---|---|---|---|"]
     # accuracy accumulators (agent + hybrid), keyed on the labeled subset

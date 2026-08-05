@@ -1,0 +1,18 @@
+[project]
+name = "flakescope"
+version = "0.1.0"
+description = "Agentic CI flake categorization — tool-calling LLM triages GitHub Actions failures."
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# Explicit, pinned rule set so local == CI regardless of ruff's changing defaults.
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]  # tests set sys.path before importing the package
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

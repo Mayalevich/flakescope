@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from flakescope.tools import LogNavigator, dispatch  # noqa: E402
+from flakescope.tools import LogNavigator, dispatch
 
 LOG = (
     "2026-01-01T00:00:00Z ##[group]Run tests\n"

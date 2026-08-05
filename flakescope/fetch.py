@@ -25,15 +25,15 @@ CACHE = Path(__file__).resolve().parent.parent / "samples"
 _TS = re.compile(r"^\S+Z\s")
 # Everything from here on is runner teardown, not the failure. Its benign
 # "Permission denied" / "safe.directory" lines otherwise poison categorization.
-_CLEANUP = re.compile(r"Post[- ]job cleanup|Cleaning up orphan processes", re.I)
+_CLEANUP = re.compile(r"Post[- ]job cleanup|Cleaning up orphan processes", re.IGNORECASE)
 # Artifact/journal upload steps run after the tests and only add noise.
 _NOISE = re.compile(r"Artifact .*finalized|No files were found|upload-artifact|"
-                    r"successfully finalized|Uploading artifact", re.I)
+                    r"successfully finalized|Uploading artifact", re.IGNORECASE)
 # Most-informative anchor first: ginkgo's consolidated summary beats a lone marker.
 _PRIMARY = [re.compile(p) for p in (
     r"Summarizing \d+ Failure", r"--- FAIL", r"\[FAILED\]", r"panic:", r"##\[error\]")]
 # Aggregation/summary jobs that only mirror other jobs' status — not real failures.
-_META_JOBS = re.compile(r"^(Total Success|Total|All (Tests|Jobs))\b", re.I)
+_META_JOBS = re.compile(r"^(Total Success|Total|All (Tests|Jobs))\b", re.IGNORECASE)
 
 
 @dataclass

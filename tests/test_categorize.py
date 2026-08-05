@@ -3,9 +3,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from flakescope.categorize import categorize_heuristic  # noqa: E402
-from flakescope.fetch import FailureCase, extract_failure_excerpt, is_real_job  # noqa: E402
-from flakescope.report import flake_status, pr_comment  # noqa: E402
+from flakescope.categorize import categorize_heuristic
+from flakescope.fetch import (
+    FailureCase,
+    extract_failure_excerpt,
+    is_real_job,
+)
+from flakescope.report import flake_status, pr_comment
 
 
 def _case(**kw) -> FailureCase:

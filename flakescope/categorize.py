@@ -86,11 +86,12 @@ class Verdict:
 
 
 # Prefer an actual error line as evidence over a tool/version banner.
-_STRONG = re.compile(r"error|fail|not properly|panic|timed out|refused|denied|\[FAILED\]", re.I)
+_STRONG = re.compile(
+    r"error|fail|not properly|panic|timed out|refused|denied|\[FAILED\]", re.IGNORECASE)
 
 
 def _first_match(excerpt: str, pattern: str) -> str | None:
-    matches = [ln.strip() for ln in excerpt.splitlines() if re.search(pattern, ln, re.I)]
+    matches = [ln.strip() for ln in excerpt.splitlines() if re.search(pattern, ln, re.IGNORECASE)]
     if not matches:
         return None
     strong = [m for m in matches if _STRONG.search(m)]
