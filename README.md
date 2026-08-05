@@ -23,11 +23,15 @@ Grounded in how the Podman maintainers actually describe flakes
   triple-failures that force a manual re-run; single failures "happen every day …
   and we're just not seeing them." This tool categorizes **every** failure it
   ingests, not only the triple-fails.
-- **Relation to existing tooling.** Podman already tracks flakes on **Cirrus CI**
-  (e.g. Ed Santiago's `cirrus-flake-xref`, which *logs/cross-references* recurring
-  flakes). This is complementary: it works on the **GitHub Actions** logs the
-  mentorship scopes, and adds LLM/agentic **root-cause categorization**, not just
-  logging. Extending ingestion to Cirrus is a natural next step.
+- **Relation to existing tooling.** Podman's CI automation
+  ([`containers/automation`](https://github.com/containers/automation)) is Python
+  and **Cirrus-centric** (`cirrus-ci_retrospective`, `cirrus-task-map`, …), and
+  flakes are tracked on Cirrus (e.g. Ed Santiago's `cirrus-flake-xref`, which
+  *logs/cross-references* recurring flakes). This PoC is deliberately
+  complementary: same language (Python), it targets the **GitHub Actions** logs
+  the mentorship scopes, and it adds the LLM/agentic **root-cause categorization**
+  layer that doesn't exist yet — not just logging. Extending ingestion to Cirrus
+  is the natural next step.
 
 **Validated against real flakes (and two honest gaps).** I bucketed Podman's
 real `flakes` / `kind/test-flake` issues against this taxonomy. It covers the
