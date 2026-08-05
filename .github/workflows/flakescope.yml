@@ -1,0 +1,54 @@
+name: Flake Report
+
+# Runs flakescope when CI fails (and on demand), analyzing this repo's own
+# recent CI failures and publishing the report to the run's job summary.
+# The deterministic (heuristic) backend needs no LLM, so it runs in CI as-is.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "owner/repo to analyze (blank = this repo)"
+        required: false
+        default: ""
+
+permissions:
+  actions: read       # read this repo's workflow logs via the API
+  contents: read
+
+jobs:
+  triage:
+    # only act on real failures (or manual runs)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Analyze recent CI failures
+        env:
+          GH_TOKEN: ${{ github.token }}   # `gh` (preinstalled) uses this
+        run: |
+          REPO="${{ github.event.inputs.repo }}"
+          REPO="${REPO:-${{ github.repository }}}"
+          echo "Analyzing failures in $REPO"
+          python -m flakescope fetch --repo "$REPO" --limit 5
+          python -m flakescope run --backend heuristic
+
+      - name: Publish report to the job summary
+        run: cat samples/flake_report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flake-report
+          path: |
+            samples/flake_report.md
+            samples/sample_pr_comment.md
+
+      # Optional integration surface: in a pull_request context, post
+      # samples/sample_pr_comment.md as a PR comment (needs pull-requests: write).
+      # Left off by default to keep this workflow read-only.

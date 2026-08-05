@@ -1,5 +1,7 @@
 # flakescope — agentic CI flake categorization (PoC)
 
+[![CI](https://github.com/Mayalevich/flakescope/actions/workflows/ci.yml/badge.svg)](https://github.com/Mayalevich/flakescope/actions/workflows/ci.yml)
+
 A minimal, end-to-end prototype of the **"Agentic CI Flake Categorization and
 Analysis"** idea, built and run against **real `containers/podman` GitHub Actions
 failures**. It ingests failed CI runs, extracts the part of the log that actually
@@ -122,6 +124,14 @@ artifact**, not stdout. These are exactly where the LLM backend (arbitrary log
 formats) and artifact fetching earn their keep — the motivation for the
 mentorship's agentic engine. I deliberately did **not** keep bolting on regexes
 until all 11 matched: that would overfit the taxonomy to 11 samples.
+
+## CI integration (runnable, in this repo)
+- `.github/workflows/ci.yml` — real CI: `ruff` + `pytest` on 3.11/3.12.
+- `.github/workflows/flakescope.yml` — triggers **when CI fails** (and on demand),
+  runs flakescope on this repo's own failures with the no-LLM heuristic backend,
+  and publishes the flake report to the run's **job summary** + an artifact. This
+  is the closed loop the mentorship targets — CI fails → it gets triaged
+  automatically — using the deterministic path that needs no model in CI.
 
 ## Limitations (known, on purpose)
 - Category → flake is a *prior*; only `rerun_passed` is ground truth.
