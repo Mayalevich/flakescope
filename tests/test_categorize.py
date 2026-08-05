@@ -54,6 +54,12 @@ def test_no_failure_signal_returns_unknown():
         "all tests passed, 0 failures\nno errors found").category == "unknown"
 
 
+def test_extract_caps_huge_single_line():
+    # A giant single line (JSON/base64 dump) must not blow up the excerpt/context.
+    assert len(extract_failure_excerpt("x" * 5_000_000)) <= 16000
+    assert len(extract_failure_excerpt("##[error] " + "A" * 2_000_000 + " FAIL")) <= 16000
+
+
 def test_extract_drops_cleanup_noise():
     log = (
         "2026-01-01T00:00:00Z • [FAILED] real failure here\n"

@@ -97,7 +97,10 @@ def extract_failure_excerpt(log: str, before: int = 160, after: int = 20) -> str
         window = lines[-(before + after):]
     else:
         window = lines[max(0, center - before): center + after + 1]
-    return _strip_ts("\n".join(window)).strip()
+    # Cap per-line length and total size: a single huge line (a JSON/base64 dump,
+    # a minified stack) must not blow up the excerpt (and the model's context).
+    window = [ln[:500] for ln in window]
+    return _strip_ts("\n".join(window)).strip()[:16000]
 
 
 def _success_keys(repo: str, per_page: int = 100) -> set[tuple[str, str]]:
