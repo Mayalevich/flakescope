@@ -132,6 +132,11 @@ until all 11 matched: that would overfit the taxonomy to 11 samples.
   and publishes the flake report to the run's **job summary** + an artifact. This
   is the closed loop the mentorship targets — CI fails → it gets triaged
   automatically — using the deterministic path that needs no model in CI.
+  (Verified live: a failing CI run triggered the triage, which ran and posted a
+  report. Amusingly, when flakescope triages its *own* lint failure, ruff echoes
+  flakescope's source — including its taxonomy regexes — so it matches its own
+  patterns; a self-reference artifact that doesn't occur on real target repos.
+  The curated real-data results above come from `containers/podman`.)
 
 ## Limitations (known, on purpose)
 - Category → flake is a *prior*; only `rerun_passed` is ground truth.
