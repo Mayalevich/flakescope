@@ -29,6 +29,19 @@ Grounded in how the Podman maintainers actually describe flakes
   mentorship scopes, and adds LLM/agentic **root-cause categorization**, not just
   logging. Extending ingestion to Cirrus is a natural next step.
 
+**Validated against real flakes (and two honest gaps).** I bucketed Podman's
+real `flakes` / `kind/test-flake` issues against this taxonomy. It covers the
+network/registry, resource (`Resource temporarily unavailable`), real-test-bug,
+and timeout/hang classes well. Two gaps it does *not* cover cleanly:
+1. **Machine/VM-startup flakes** (`wsl` / `windows machine` / `applehv`) — a whole
+   recurring class with no clean bucket (the ambiguous cases I left unlabeled).
+2. **The dominant race/locking class.** Maintainers say most flakes are test-infra
+   races; but real ones surface as *varied symptoms* (`unlinkat EBUSY`, `container
+   does not exist`, `send on closed channel`, locking) that a symptom regex like
+   `race_condition` mostly misses. The lesson: that class is best caught **not by
+   log symptoms but by re-run history** — precisely what `rerun_passed` does. So
+   the re-run signal matters more than symptom matching for Podman's #1 flake type.
+
 ## Pipeline
 ```
 GitHub Actions API ──▶ fetch.py ──▶ failure excerpt ──▶ categorize.py ──▶ report.py
