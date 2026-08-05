@@ -30,8 +30,13 @@ Grounded in how the Podman maintainers actually describe flakes
   *logs/cross-references* recurring flakes). This PoC is deliberately
   complementary: same language (Python), it targets the **GitHub Actions** logs
   the mentorship scopes, and it adds the LLM/agentic **root-cause categorization**
-  layer that doesn't exist yet — not just logging. Extending ingestion to Cirrus
-  is the natural next step.
+  layer that doesn't exist yet — not just logging.
+- **Cirrus ingestion is prototyped** (`flakescope/fetch_cirrus.py`,
+  `python -m flakescope fetch-cirrus`): it queries the Cirrus GraphQL API for
+  failed tasks and reuses the exact excerpt → categorize → agent pipeline. The
+  pure transform (GraphQL payload → `FailureCase`, incl. cross-build re-run flake
+  detection) is **unit-tested**; the two network calls are **not run here** (the
+  dev sandbox blocks `api.cirrus-ci.com`) and need a networked machine to confirm.
 
 **Validated against real flakes (and two honest gaps).** I bucketed Podman's
 real `flakes` / `kind/test-flake` issues against this taxonomy. It covers the

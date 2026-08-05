@@ -23,6 +23,12 @@ def main(argv: list[str] | None = None) -> int:
     f.add_argument("--repo", default="containers/podman")
     f.add_argument("--limit", type=int, default=5)
 
+    fc = sub.add_parser("fetch-cirrus",
+                        help="fetch failed Cirrus CI tasks (Podman's primary CI)")
+    fc.add_argument("--owner", default="containers")
+    fc.add_argument("--name", default="podman")
+    fc.add_argument("--limit", type=int, default=5)
+
     r = sub.add_parser("run", help="categorize cached failures -> report")
     r.add_argument("--backend", default="heuristic",
                    choices=["heuristic", "ollama"],
@@ -46,6 +52,13 @@ def main(argv: list[str] | None = None) -> int:
         cases = fetch_failed(args.repo, args.limit)
         path = cache_cases(cases)
         print(f"cached {len(cases)} failed jobs -> {path}")
+        return 0
+
+    if args.cmd == "fetch-cirrus":
+        from .fetch_cirrus import fetch_cirrus_failed
+        cases = fetch_cirrus_failed(args.owner, args.name, args.limit)
+        path = cache_cases(cases)
+        print(f"cached {len(cases)} failed Cirrus tasks -> {path}")
         return 0
 
     cases = load_cases()
