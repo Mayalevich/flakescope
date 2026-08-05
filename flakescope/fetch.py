@@ -148,5 +148,13 @@ def load_cases() -> list[FailureCase]:
 
 
 def load_raw(job_id: int) -> str:
-    """Raw job log cached during fetch (for the agent to navigate itself)."""
-    return (CACHE / f"raw_{job_id}.log").read_text(encoding="utf-8")
+    """Raw job log cached during fetch (for the agent to navigate itself).
+
+    Prefers the plain `.log` (fresh fetch); falls back to a committed `.log.gz`
+    so the agent eval is reproducible from a clone without re-fetching.
+    """
+    plain = CACHE / f"raw_{job_id}.log"
+    if plain.exists():
+        return plain.read_text(encoding="utf-8")
+    import gzip
+    return gzip.decompress((CACHE / f"raw_{job_id}.log.gz").read_bytes()).decode("utf-8")

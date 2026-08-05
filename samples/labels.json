@@ -1,9 +1,11 @@
 {
-  "_note": "Hand-labeled ground truth for cases whose root cause is unambiguous from the log. Ambiguous machine-test failures left unlabeled. Keyed by job_id.",
+  "_note": "Hand-labeled ground truth for cases whose root cause is unambiguous from the log. Genuinely ambiguous cases (huge-time hangs, failures buried deep with no clear marker) are left unlabeled on purpose rather than guessed. Keyed by job_id.",
+  "92271565830": {"category": "real_test_bug", "is_flake": false, "why": "named ginkgo spec failed: '[FAIL] run cp commands [It] podman cp'"},
+  "92175991903": {"category": "real_test_bug", "is_flake": false, "why": "Go test failure '--- FAIL: TestMachine'"},
+  "92175991951": {"category": "real_test_bug", "is_flake": false, "why": "named ginkgo spec: '[FAIL] podman machine rm [It] Remove running machine'"},
+  "92016969441": {"category": "real_test_bug", "is_flake": false, "why": "named ginkgo spec: '[FAIL] podman machine set [It] set machine cpus'"},
   "92016971144": {"category": "real_test_bug", "is_flake": false, "why": "BATS assertion 'FAIL: exit code is 126; expected 0'"},
-  "92051839476": {"category": "flaky_dependency", "is_flake": true, "why": "apt mirror: 'W: Failed to fetch http://archive.ubuntu.com'"},
-  "92051840263": {"category": "flaky_dependency", "is_flake": true, "why": "apt mirror: 'E: Failed to fetch ... libcacard'"},
-  "91863132405": {"category": "real_test_bug", "is_flake": false, "why": "ginkgo '[FAIL] Podman run networking ... two static IPs'"},
-  "91799682323": {"category": "lint_format", "is_flake": false, "why": "gofumpt 'File is not properly formatted'"},
-  "92175992913": {"category": "infra_permission", "is_flake": true, "why": "runner missing KVM: 'chown: cannot access /dev/kvm' (heuristic missed this; only found by navigating the log)"}
+  "92051839476": {"category": "flaky_dependency", "is_flake": true, "why": "apt mirror 'W: Failed to fetch http://archive.ubuntu.com'"},
+  "92051840263": {"category": "flaky_dependency", "is_flake": true, "why": "apt mirror 'E: Failed to fetch ... libcacard'"},
+  "92175992913": {"category": "infra_permission", "is_flake": true, "why": "runner missing KVM: 'chown: cannot access /dev/kvm'"}
 }
