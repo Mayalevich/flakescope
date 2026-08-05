@@ -90,10 +90,14 @@ TOOL_SCHEMAS = [
 
 
 def dispatch(nav: LogNavigator, name: str, args: dict) -> str:
-    if name == "list_steps":
-        return nav.list_steps()
-    if name == "search_log":
-        return nav.search_log(str(args.get("pattern", "")))
-    if name == "read_section":
-        return nav.read_section(args.get("start", 0), args.get("end", 0))
+    """Route a tool call. Never raises — malformed args return an error string."""
+    try:
+        if name == "list_steps":
+            return nav.list_steps()
+        if name == "search_log":
+            return nav.search_log(str(args.get("pattern", "")))
+        if name == "read_section":
+            return nav.read_section(int(args.get("start", 0)), int(args.get("end", 0)))
+    except (ValueError, TypeError) as e:
+        return f"tool error: {type(e).__name__}: {e}"
     return f"unknown tool {name}"

@@ -85,8 +85,11 @@ def run_agent(raw_log: str, job_name: str, model: str = "qwen2.5:7b",
                 return res
             res.steps += 1  # count navigation tool calls (not submit)
             res.trajectory.append(f"{fn}({_arg_summary(args)})")
-            out = dispatch(nav, fn, args)
-            if out.startswith("bad regex") or out.startswith("unknown tool"):
+            try:
+                out = dispatch(nav, fn, args)
+            except Exception as e:  # noqa: BLE001 - malformed tool args must not crash the run
+                out = f"tool error: {type(e).__name__}: {e}"
+            if out.startswith(("bad regex", "unknown tool", "tool error")):
                 res.call_errors += 1     # invalid tool parameters
             res.bytes_pulled += len(out[:2000])
             messages.append({"role": "tool", "content": out[:2000]})
@@ -95,7 +98,12 @@ def run_agent(raw_log: str, job_name: str, model: str = "qwen2.5:7b",
 
 def fn_args(call: dict) -> dict:
     a = call["function"].get("arguments", {})
-    return a if isinstance(a, dict) else json.loads(a or "{}")
+    if isinstance(a, dict):
+        return a
+    try:
+        return json.loads(a or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return {}  # a model that emits malformed arguments must not crash the run
 
 
 def _arg_summary(args: dict) -> str:

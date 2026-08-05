@@ -45,3 +45,15 @@ def test_dispatch_routes():
 
 def test_bad_regex_is_handled():
     assert "bad regex" in LogNavigator(LOG).search_log("[unclosed")
+
+
+def test_dispatch_bad_args_do_not_crash():
+    # A model that emits non-int read_section args must not crash the agent run.
+    out = dispatch(LogNavigator(LOG), "read_section", {"start": "abc", "end": "xyz"})
+    assert out.startswith("tool error")
+
+
+def test_fn_args_handles_malformed_json():
+    from flakescope.agent import fn_args
+    assert fn_args({"function": {"arguments": "{not valid json"}}) == {}
+    assert fn_args({"function": {"arguments": {"a": 1}}}) == {"a": 1}

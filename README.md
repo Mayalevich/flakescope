@@ -9,6 +9,26 @@ explains the failure, categorizes it into a flake taxonomy (flake vs real bug),
 and emits a report + a PR-comment. Written as a starting point for the CNCF
 Podman LFX mentorship, not a finished tool.
 
+## Why this matches Podman's real flake problem
+Grounded in how the Podman maintainers actually describe flakes
+([containers/podman#17967](https://github.com/containers/podman/issues/17967)):
+- **Their taxonomy is essentially this one.** They bucket e2e flakes into
+  (1) resource/network/registry, (2) *real Podman bugs*, (3) test-infra bugs
+  (races, insufficient locking) — which maps to `flaky_dependency`/`network_*`,
+  `real_test_bug`, and `race_condition` here.
+- **"Hiding flakes with retries also hides real Podman bugs"** (the sqlite case) —
+  that quote is exactly why this tool is **conservative**: it will not label a
+  genuine assertion a flake, so a real bug never gets auto-retried away.
+- **The gap it fills:** Podman's existing flake logging only captures the
+  triple-failures that force a manual re-run; single failures "happen every day …
+  and we're just not seeing them." This tool categorizes **every** failure it
+  ingests, not only the triple-fails.
+- **Relation to existing tooling.** Podman already tracks flakes on **Cirrus CI**
+  (e.g. Ed Santiago's `cirrus-flake-xref`, which *logs/cross-references* recurring
+  flakes). This is complementary: it works on the **GitHub Actions** logs the
+  mentorship scopes, and adds LLM/agentic **root-cause categorization**, not just
+  logging. Extending ingestion to Cirrus is a natural next step.
+
 ## Pipeline
 ```
 GitHub Actions API ──▶ fetch.py ──▶ failure excerpt ──▶ categorize.py ──▶ report.py
