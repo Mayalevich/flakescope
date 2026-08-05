@@ -137,12 +137,13 @@ def _agent(model: str) -> int:
              "|---|---|---|---|---|---|"]
     # accuracy accumulators (agent + hybrid), keyed on the labeled subset
     a_cat = a_flake = h_cat = h_flake = n = 0
-    steps = errs = pulled = logbytes = submitted = 0
+    steps = errs = pulled = logbytes = submitted = processed = 0
     for c in cases:
         try:
             r = run_agent(load_raw(c.job_id), c.job_name, model)
         except FileNotFoundError:
             continue
+        processed += 1
         heur = categorize_heuristic(c.excerpt)
         hybrid = heur if heur.category != "unknown" else r.verdict  # heuristic first
         submitted += r.submitted
@@ -165,10 +166,10 @@ def _agent(model: str) -> int:
             h_cat += hybrid.category == lab["category"]
             h_flake += hybrid.is_flake == lab["is_flake"]
 
-    nz = len(cases) or 1
+    nz = processed or 1
     metrics = [
         "", "## Trajectory metrics (from the real runs)",
-        f"- **{submitted}/{len(cases)} submitted** a verdict",
+        f"- **{submitted}/{processed} submitted** a verdict",
         f"- **steps-to-evidence:** {steps/nz:.1f} tool calls/case (avg)",
         f"- **call-error rate:** {errs/steps if steps else 0:.0%} (invalid tool params)",
         f"- **context efficiency:** agent pulled **{pulled/logbytes*100 if logbytes else 0:.2f}%** "

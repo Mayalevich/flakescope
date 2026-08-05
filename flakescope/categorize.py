@@ -164,7 +164,7 @@ def _ollama(excerpt: str, model: str) -> dict:
     body = json.dumps({
         "model": model,
         "prompt": _PROMPT.format(cats=", ".join(CATEGORIES), excerpt=excerpt[:6000]),
-        "format": "json", "stream": False, "options": {"temperature": 0},
+        "format": "json", "stream": False, "options": {"temperature": 0, "seed": 0},
     }).encode()
     req = urllib.request.Request("http://localhost:11434/api/generate", body,
                                  {"Content-Type": "application/json"})

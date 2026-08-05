@@ -65,44 +65,48 @@ Outputs land in `samples/`: `flake_report.md`, `agent_report.md` (trajectories),
 - **Reproducible.** Excerpts/verdicts are cached and deterministic; the ground
   truth lives in `samples/labels.json`.
 ## Evaluation (run for real on `ollama`, vs a hand-labeled ground truth)
-Every approach is scored on the same **8 labeled cases** (`samples/labels.json`;
-ambiguous cases left unlabeled on purpose) — accuracy on the actionable
-**is_flake** decision and on exact **category**:
+Scored on **8 labeled cases** (`samples/labels.json`; ambiguous cases left
+unlabeled on purpose). **These numbers are illustrative, not a benchmark — at
+n = 8, one case is ~12 pp**, so lean on the *qualitative* findings below, not the
+decimals.
 
-| Approach | is_flake acc | category acc | notes |
+| Approach | is_flake | category | reproducible? |
 |---|---|---|---|
-| heuristic baseline | 88% | 75% | precise on formats it knows; `unknown` otherwise |
-| single-shot LLM qwen2.5:7b | 62% | 12% | handed an excerpt, it abstains / mislabels |
-| agentic LLM qwen2.5:7b | 75% | 50% | navigates the log itself via tools |
-| **hybrid (heuristic → agent)** | **100%** | **88%** | best on both metrics |
+| heuristic baseline | 88% | 75% | fully (deterministic) |
+| single-shot LLM qwen2.5:7b | 62% | 12% | yes (`seed=0`) |
+| agentic LLM qwen2.5:7b | 75% | 62% | approx (`seed=0`; tool-calling still varies) |
+| **hybrid (heuristic → agent)** | **100%** | **88%** | approx |
 
-**Agent trajectory metrics** (measured over the real runs, not asserted):
-**11/12** cases submitted a verdict · **2.1** tool calls to evidence (avg) ·
-**0%** call-error rate (valid tool params) · **context efficiency ~1%** — the
-agent pulled **~30 KB of the log corpus** into the model's context per case.
-Reading a fraction of the log is the whole point of the agentic design.
+**Agent trajectory metrics** (measured, not asserted): **11/12** submitted a
+verdict · **2.2** tool calls to evidence (avg) · **0%** call-error rate ·
+**context efficiency ~1.5%** — the agent pulled **~33 KB of the log corpus** into
+context per case. Reading a fraction of the log is the point of the agentic path.
 
-Honest findings:
+What's actually true (and what isn't):
 
-1. **Single-shot LLMs are unreliable here** — handed an excerpt, the 7B model
-   scores 62%/12%; it abstains or mislabels.
-2. **The agentic approach beats single-shot.** Given only the job name, the
-   tool-calling agent navigates the log itself (75%/50%) — and it categorized a
-   case the regex baseline **missed entirely** (`sys remote`: it searched to
-   `chown: cannot access '/dev/kvm'`, absent from the baseline's excerpt).
-3. **Few-shot is a real trade-off, honestly reported.** Adding generic examples to
-   the skill lifted the agent's category coverage (33% → 50%) but made the
-   *standalone* agent over-commit on ambiguous machine tests (is_flake 100% →
-   75%). It net-helped the recommended design — the **hybrid** — whose category
-   accuracy rose 83% → **88%** while staying **100% is_flake**.
-4. **The hybrid is measurably best.** Heuristic first, agent on what it can't
-   parse: **88% category / 100% is_flake**, beating heuristic (75%) and the
-   standalone agent (50%) alone. See `samples/agent_report.md` (trajectories +
-   metrics) and `samples/comparison.md`.
+1. **The single-shot LLM is worse than a regex on the *same* excerpt** (12% vs the
+   heuristic's 75% category). So this isn't "LLMs are magic" — a plain LLM
+   underperforms deterministic rules here.
+2. **The agent is a *complement*, not a better categorizer.** Its category
+   accuracy (62%) is *below* the heuristic's (75%) — it over-guesses on ambiguous
+   machine tests. Its real value is narrow but real: it reads logs the regex can't
+   parse (it navigated to `chown: cannot access '/dev/kvm'`, a case the baseline
+   missed) and it decides flake-vs-real, cheaply (~1.5% of the log).
+3. **The hybrid is the right design** — heuristic first, agent on what it can't
+   parse: **88% category / 100% is_flake**, above either alone.
+4. **Re-run history is the real flake signal, and it fired:** **3 of 12** cases
+   are confirmed flakes (the same commit passed on another run) — ground truth,
+   not a guessed category.
+5. **Honest negative result:** removing the search hint from the skill to make the
+   agent *fully* autonomous **degraded** the 7B model (it chose narrower patterns
+   and missed signals). The hint is load-bearing for a small local model;
+   genuinely autonomous search needs a stronger model. So the shipped skill keeps
+   a light hint — chosen on evidence, not vibes.
 
-> The few-shot examples in `skills/ci_triage.md` are **generic** taxonomy
-> illustrations — deliberately *not* the evidence strings of any labeled case —
-> so the gains are generalization, not answer leakage.
+Caveats kept in view: n = 8; the taxonomy is Podman/ginkgo-tuned (two unlabeled
+cases — a VM-boot failure and a docs-xref check — don't fit it cleanly); the
+few-shot examples in `skills/ci_triage.md` are **generic** (not any labeled
+case's evidence), so gains are generalization, not leakage.
 
 This is the project's own thesis, shown with data: naive LLM use fails; the value
 is in the **agentic tool-navigation + evidence grounding**, exactly what the

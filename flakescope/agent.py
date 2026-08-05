@@ -45,7 +45,8 @@ class AgentResult:
 
 def _chat(model: str, messages: list[dict]) -> dict:
     body = json.dumps({"model": model, "messages": messages, "tools": TOOL_SCHEMAS,
-                       "stream": False, "options": {"temperature": 0}}).encode()
+                       "stream": False,
+                       "options": {"temperature": 0, "seed": 0}}).encode()
     req = urllib.request.Request("http://localhost:11434/api/chat", body,
                                  {"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=180) as r:
