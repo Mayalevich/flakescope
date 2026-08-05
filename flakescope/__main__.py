@@ -119,47 +119,69 @@ def _compare(models: list[str]) -> int:
 
 
 def _agent(model: str) -> int:
-    """Run the tool-calling agent on every cached case; record trajectories."""
+    """Run the tool-calling agent on every case; record trajectories + metrics."""
     import json
 
     from .agent import run_agent
+    from .categorize import categorize_heuristic
     from .fetch import load_raw
 
     cases = load_cases()
     labels = json.loads((OUT / "labels.json").read_text(encoding="utf-8"))
-    lines = ["# Agentic categorizer (tool-calling) — trajectories", "",
-             f"Model: `{model}`. The agent starts with only the job name and must "
-             "call tools to find the failure.", "",
-             "| Job | Verdict | Steps | Trajectory | Evidence |", "|---|---|---|---|---|"]
-    cat_ok = flake_ok = n = 0
-    steps_total = submitted = 0
+    lines = ["# Agentic categorizer (tool-calling) — trajectories & metrics", "",
+             f"Model: `{model}`. The agent gets only the job name and must call "
+             "tools to find the failure itself.", "",
+             "| Job | Verdict | Steps | Ctx% | Trajectory | Evidence |",
+             "|---|---|---|---|---|---|"]
+    # accuracy accumulators (agent + hybrid), keyed on the labeled subset
+    a_cat = a_flake = h_cat = h_flake = n = 0
+    steps = errs = pulled = logbytes = submitted = 0
     for c in cases:
         try:
             r = run_agent(load_raw(c.job_id), c.job_name, model)
         except FileNotFoundError:
             continue
+        heur = categorize_heuristic(c.excerpt)
+        hybrid = heur if heur.category != "unknown" else r.verdict  # heuristic first
         submitted += r.submitted
-        steps_total += r.steps
-        traj = " → ".join(r.trajectory).replace("|", "\\|")[:70]
-        lines.append(f"| {c.job_name[:26]} | `{r.verdict.category}` "
-                     f"{'🟡' if r.verdict.is_flake else '🔴'} | {r.steps} | {traj} "
-                     f"| {r.verdict.evidence[:50].replace('|','')} |")
-        print(f"  {c.job_name[:28]:30} {r.verdict.category:16} steps={r.steps} "
-              f"traj={' → '.join(r.trajectory)[:60]}")
+        steps += r.steps
+        errs += r.call_errors
+        pulled += r.bytes_pulled
+        logbytes += r.log_bytes
+        traj = " → ".join(r.trajectory).replace("|", "\\|")[:60]
+        lines.append(f"| {c.job_name[:24]} | `{r.verdict.category}` "
+                     f"{'🟡' if r.verdict.is_flake else '🔴'} | {r.steps} "
+                     f"| {r.context_efficiency*100:.2f} | {traj} "
+                     f"| {r.verdict.evidence[:44].replace('|','')} |")
+        print(f"  {c.job_name[:26]:28} {r.verdict.category:15} steps={r.steps} "
+              f"ctx={r.context_efficiency*100:.2f}% traj={' → '.join(r.trajectory)[:48]}")
         lab = labels.get(str(c.job_id))
         if lab:
             n += 1
-            cat_ok += r.verdict.category == lab["category"]
-            flake_ok += r.verdict.is_flake == lab["is_flake"]
-    avg = steps_total / len(cases) if cases else 0
-    summary = (f"\n**{submitted}/{len(cases)} submitted**, avg **{avg:.1f} tool "
-               f"calls/case**")
+            a_cat += r.verdict.category == lab["category"]
+            a_flake += r.verdict.is_flake == lab["is_flake"]
+            h_cat += hybrid.category == lab["category"]
+            h_flake += hybrid.is_flake == lab["is_flake"]
+
+    nz = len(cases) or 1
+    metrics = [
+        "", "## Trajectory metrics (from the real runs)",
+        f"- **{submitted}/{len(cases)} submitted** a verdict",
+        f"- **steps-to-evidence:** {steps/nz:.1f} tool calls/case (avg)",
+        f"- **call-error rate:** {errs/steps if steps else 0:.0%} (invalid tool params)",
+        f"- **context efficiency:** agent pulled **{pulled/logbytes*100 if logbytes else 0:.2f}%** "
+        f"of the total log into context ({pulled/1024:.0f} KB of {logbytes/1024/1024:.1f} MB)",
+    ]
     if n:
-        summary += (f". On {n} labeled cases: is_flake **{flake_ok/n:.0%}**, "
-                    f"category **{cat_ok/n:.0%}**.")
-    lines.insert(4, summary)
+        metrics += [
+            "", f"## Accuracy on {n} labeled cases",
+            "| Approach | is_flake | category |", "|---|---|---|",
+            f"| agent (`{model}`) | {a_flake/n:.0%} | {a_cat/n:.0%} |",
+            f"| **hybrid (heuristic→agent)** | **{h_flake/n:.0%}** | **{h_cat/n:.0%}** |",
+        ]
+    lines[3:3] = metrics
     (OUT / "agent_report.md").write_text("\n".join(lines), encoding="utf-8")
-    print(summary.strip())
+    print("\n".join(m for m in metrics if m and not m.startswith("|")))
     print(f"-> {OUT/'agent_report.md'}")
     return 0
 

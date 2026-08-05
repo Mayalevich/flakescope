@@ -68,25 +68,32 @@ accuracy on the actionable **is_flake** decision and on exact **category**:
 
 | Approach | is_flake acc | category acc | notes |
 |---|---|---|---|
-| heuristic baseline | 83% | **67%** | precise on formats it knows; `unknown` otherwise |
+| heuristic baseline | 83% | 67% | precise on formats it knows; `unknown` otherwise |
 | single-shot LLM qwen2.5:3b | 50% | 0% | abstains / confabulates |
 | single-shot LLM qwen2.5:7b | 50% | 0% | bigger ≠ better |
-| **agentic LLM qwen2.5:7b** | **100%** | 33% | navigates the log itself (~2.8 tool calls) |
+| agentic LLM qwen2.5:7b | **100%** | 33% | navigates the log itself |
+| **hybrid (heuristic → agent)** | **100%** | **83%** | best on both metrics |
 
-Two honest findings:
+**Agent trajectory metrics** (measured over the real runs, not asserted):
+**11/12** cases submitted a verdict · **1.8** tool calls to evidence (avg) ·
+**0%** call-error rate (valid tool params) · **context efficiency 0.11%** — the
+agent pulled **26 KB of a 23.1 MB** log corpus into the model's context. Reading
+~0.1% of the logs is the whole point of the agentic design.
+
+Three honest findings:
 
 1. **Single-shot LLMs are unreliable here** — handed an excerpt, the 3B/7B models
-   abstain or (with a naive prompt) confabulate a category at confidence 1.0. A
-   bigger local model doesn't fix it.
-2. **The agentic approach is the one that works.** Given only the job name, the
-   tool-calling agent finds the failure itself in ~2.8 calls and gets the
-   flake/real decision right on every labeled case — including one the regex
-   baseline **missed entirely** (`sys remote`: it navigated to
-   `chown: cannot access '/dev/kvm'`, which never appeared in the baseline's
-   excerpt). It's still weaker than the baseline on *exact category*, so the
-   right production design is a **hybrid**: the deterministic baseline for known
-   formats, the agent for everything it can't parse. See `samples/agent_report.md`
-   for the full trajectories and `samples/comparison.md` for the single-shot table.
+   abstain or (naively) confabulate a category at confidence 1.0. Bigger local
+   model doesn't fix it.
+2. **The agentic approach works.** Given only the job name, the tool-calling agent
+   finds the failure itself and gets the flake/real decision right on every
+   labeled case — including one the regex baseline **missed entirely**
+   (`sys remote`: it navigated to `chown: cannot access '/dev/kvm'`, absent from
+   the baseline's excerpt) — while reading ~0.1% of the log.
+3. **A hybrid is measurably best.** Heuristic first, agent on what it can't parse:
+   **83% category / 100% is_flake**, beating heuristic (67%) and agent (33%)
+   alone. See `samples/agent_report.md` (trajectories + metrics) and
+   `samples/comparison.md` (single-shot table).
 
 This is the project's own thesis, shown with data: naive LLM use fails; the value
 is in the **agentic tool-navigation + evidence grounding**, exactly what the
@@ -127,10 +134,11 @@ until all 11 matched: that would overfit the taxonomy to 11 samples.
 - Failures that live only in an uploaded journal artifact aren't fetched yet.
 
 ## What a full project adds (mentorship scope)
-Already prototyped here: the agentic tool-navigation loop, re-run-based flake
-confirmation, the taxonomy, and the evaluation harness. A full project would add:
-- A **hybrid router** (deterministic baseline first, agent for the rest) and
-  few-shot/frontier models to raise exact-category accuracy.
+Already prototyped here: the agentic tool-navigation loop, the measured hybrid
+router, re-run-based flake confirmation, the taxonomy, trajectory metrics, and
+the evaluation harness. A full project would add:
+- Few-shot / frontier models to raise the agent's exact-category accuracy above
+  the current 33% (the hybrid already reaches 83%).
 - **Artifact fetching** so journal-only failures become solvable.
 - A larger, versioned labeled benchmark and trajectory metrics (call-error rate,
   steps-to-evidence) tracked over time.

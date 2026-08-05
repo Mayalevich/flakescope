@@ -27,8 +27,20 @@ SKILL = (Path(__file__).resolve().parent.parent / "skills" / "ci_triage.md").rea
 class AgentResult:
     verdict: Verdict
     trajectory: list[str] = field(default_factory=list)   # e.g. ["search_log(FAIL)", ...]
-    steps: int = 0
+    steps: int = 0                 # navigation tool calls before submit
     submitted: bool = False
+    bytes_pulled: int = 0          # total tool-output bytes fed back to the model
+    log_bytes: int = 0             # size of the full log the agent could have read
+    call_errors: int = 0           # tool calls with invalid params (e.g. bad regex)
+
+    @property
+    def context_efficiency(self) -> float:
+        """Fraction of the full log the agent actually pulled into context."""
+        return self.bytes_pulled / self.log_bytes if self.log_bytes else 0.0
+
+    @property
+    def call_error_rate(self) -> float:
+        return self.call_errors / self.steps if self.steps else 0.0
 
 
 def _chat(model: str, messages: list[dict]) -> dict:
@@ -49,7 +61,7 @@ def run_agent(raw_log: str, job_name: str, model: str = "qwen2.5:7b",
                                     f"tools now, then submit."},
     ]
     res = AgentResult(verdict=Verdict("unknown", False, 0.0, "", "Manual review.",
-                                      f"agent:{model}"))
+                                      f"agent:{model}"), log_bytes=len(raw_log))
     for _ in range(max_steps):
         try:
             msg = _chat(model, messages)
@@ -65,14 +77,17 @@ def run_agent(raw_log: str, job_name: str, model: str = "qwen2.5:7b",
         for call in calls:
             fn = call["function"]["name"]
             args = fn_args(call)
-            res.steps += 1
             if fn == "submit":
                 res.trajectory.append("submit")
                 res.verdict = _finalize(args, nav, model)
                 res.submitted = True
                 return res
+            res.steps += 1  # count navigation tool calls (not submit)
             res.trajectory.append(f"{fn}({_arg_summary(args)})")
             out = dispatch(nav, fn, args)
+            if out.startswith("bad regex") or out.startswith("unknown tool"):
+                res.call_errors += 1     # invalid tool parameters
+            res.bytes_pulled += len(out[:2000])
             messages.append({"role": "tool", "content": out[:2000]})
     return res
 
